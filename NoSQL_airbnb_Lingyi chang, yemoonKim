@@ -1,0 +1,71 @@
+Lingyi Chang, Yemoon Kim
+airbnb datasets
+
+
+######## Aggregation ########
+
+#Q1. In sample_Airbnb.listingsAndReviews, Find the total number of listings for each property_type rooms whose review_scores_cleanliness is greater than 9, market is Sydney
+db.listingsAndReviews.aggregate([
+    { "$match":{ "$and":[{"address.market": "Sydney"}, {"review_scores.review_scores_cleanliness":{"$gt":9}}]}}, 
+    { "$project": { "property_type": 1, "_id": 0 }}, 
+    { "$group": { "_id": "$property_type", "count": { "$sum": 1 } } }, 
+    { $sort : { count: -1 } }]).pretty()
+
+
+#Q2. In sample_Airbnb.listingsAndReviews, in Hongkong, group by review_scores_location, show the each average of cleanness, and price. And sort it by review_score_location with decreasing order.
+db.listingsAndReviews.aggregate([
+    { "$match": {"address.market": "Hong Kong"}}, 
+    { "$project": { "review_scores.review_scores_location": 1,"review_scores.review_scores_cleanliness": 1, "price": 1, "_id": 0 }}, 
+    { "$group": { "_id": "$review_scores.review_scores_location", "avg_cleanliness":{$avg:"$review_scores.review_scores_cleanliness"}, "avg_price":{"$avg":"$price"} } }, 
+    {$sort:{ "avg_cleanliness": 1, "_id": 1 }}])
+
+
+#Q3. find properties that has less than 10 reviews in each country in descending order
+db.listingsAndReviews.aggregate([
+    {"$match":{"number_of_reviews":{"$lt":10}}},
+    {"$project":{"address.country":1,"_id":0}}, 
+    {"$group":{"_id":"$address.country","occur":{"$sum":1}}}, 
+    {$sort:{"occur":-1}}]).pretty()
+
+
+#Q4. find properties that cost lower than 150 and have review_score_location over 8 in each city and sort by descending order
+db.listingsAndReviews.aggregate([
+    {$match:{"$and":[{"price":{"$lt":150}},{"review_scores.review_scores_location":{"$gt":8}}]}},
+    {$project:{"address.market":1,"_id":0}}, 
+    {$group:{"_id":"$address.market","occur":{"$sum":1}}}, 
+    {$sort:{"occur":-1}}]).pretty()
+
+
+
+######## $expr ########
+
+#Q1. Find the names of airbnb which average of review_scores_cleanliness, review_scores_accuracy, and review_scores_communication is greater than 9.5 or price is less than 60
+db.listingsAndReviews.find({ "$expr": { "$or": [ { "$gt": [{"$avg":["$review_scores.review_scores_cleanliness", "$review_scores.review_scores_accuracy","$review_scores.review_scores_communication"]}, 9.5 ]}, { "$lte": [ "$price", 60 ] }]}},{"name":1, "countries":1, "_id":0})
+
+
+#Q2. find the number of properties that has identical accommodates and beds offered
+db.listingsAndReviews.find({"$expr":{"$eq":["$accommodates","$beds"]}}).count()
+
+
+
+
+######## Comparison + Logical Operator ########
+
+#Q1. In sample_Airbnb.listingsAndReviews, show all the listings whose property type is "Guesthouse" or, "Condominium", and bed_type name doesnt contain 'Sofa', in market Oahu.
+db.listingsAndReviews.find({"$and": [{$nor: [{property_type : "Guesthouse"}, {property_type : "Condominium"}]},{bed_type:{ $not: /Sofa.*/}},{"address.market" :"Oahu"}]}).pretty()
+
+#Q2.  find the number of properties that are either a house or apartment, which can accommodate more than 4 people or whose cancellation policy is flexible
+db.listingsAndReviews.find(    {"$and":[        {"$or":[{"property_type":"Apartment"},{"property_type":"House"}]},        {"$or":[{"accommodates":{"$gt":4}},{"cancellation_policy":"flexible"}]}]    }).count()
+
+
+######## Array ########
+
+#Q1. In sample_Airbnb.listingsAndReviews, show all the listings whose number of amenities are greater than 40, including Wifi and Elevator in market New York and sort by the number of amenities
+db.listingsAndReviews.aggregate([{$set: { size_of_amenities: {  $size: '$amenities' }}}, {$match: { $and: [  {   'address.market': 'New York'  },  {  size_of_amenities: {    $gt: 40   }  },  {   amenities: {    $all: [     'Wifi',     'Elevator'    ]   }  } ]}}, {$project: { _id: 0, name: 1, size_of_amenities: {  $size: '$amenities' }}},{ $sort : { size_of_amenities: -1 } }])
+
+#Q2. find the number of properties that has over 30 reviews, and has kitchen and heating
+db.listingsAndReviews.find({"$and":[{"number_of_reviews":{"$gt":30}},{"amenities":{"$all":["Kitchen","Heating"]}}]}).count()
+
+
+#Q3. find the number of properties receiving review score rating of 100 and have at least 1 review
+db.listingsAndReviews.find({"$and":[{"review_scores.review_scores_rating":{"$eq":100}},{"number_of_reviews":{"$ne":0}}]}).count()

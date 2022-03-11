@@ -1,0 +1,85 @@
+Lingyi Chang, Yemoon Kim
+trips + movies datasets
+
+
+######## Aggregation ########
+
+#Q1.: filter the Number of bike users aged less than 30 and who use the bikes during midnight (0am-6am), and sort by descending order
+db.trips.aggregate([
+{$set: {
+hourextract: {$hour: '$start time'},
+hourextract2: {$hour: '$stop time'}}}, 
+ {$match: {$and: [{'birth year': {$gt: 1990}},{hourextract: {$gt: 0}},{hourextract2: {$lt: 6}}]}}, 
+ {$project: {hourextract2: 1,_id: 0,count: 1}}, 
+ {$group: {_id: '$hourextract2',count: {$sum: 1}}},
+ {$sort:{ _id: -1 }}])
+
+
+#Q2.: calcualte the average trip duration by age, and sort by descending order
+db.trips.aggregate([
+{"$group":{"_id":"$birth year","average_duration":{"$avg":"$tripduration"}}}
+{$sort:{"average_duration":-1,"_id":-1}}
+])
+
+#Q3.: calculate the users stopping at South End Ave & Liberty St by age, and sort by descending order
+db.trips.aggregate([
+    {"$match":{"end station name":{"$eq":"South End Ave & Liberty St"}}},
+    {"$project":{"birth year":1,"_id":0}}, 
+    {"$group":{"_id":"$birth year","occur":{"$sum":1}}}, 
+    {$sort:{"occur":-1}}]).pretty()
+
+
+#Q4. average tomota ratings in each decade. 1990's , 1980's... in USA
+db.movies.aggregate([{$set: { decade: {$concat: [{ $substr: [ {  $toString: '$year'     },     0,     3    ]   },   '0s'  ] }}}, {$match: { countries: {  $all: [   'USA'  ] }}}, {$project: { title: 1, _id: 0, decade: , 'tomatoes.viewer.rating': 1}}, {$group: { _id: '$decade', 'Best rating': {  $avg: '$tomatoes.viewer.rating' }}}, {$sort: { "Best rating": -1}}])
+
+
+#Q5.  Find the total number of listings for genres in decreasing order between 2000 and 2010.
+db.movies.aggregate([{ "$match": {"year": {"$gt":2000, "$lt": 2010} }}, { "$project": { "genres": 1, "_id": 0 }}, { "$group": { "_id": "$genres", "count":{"$sum":1} }} , {$sort:{ count: -1 }}]).pretty()
+
+
+
+
+
+######## $expr ########
+
+#Q1. find number of subscribers who are over 60 years old and that has trip duration over 100
+db.trips.find({"$expr":{"$and":[{"$gt":["$tripduration",1000]},{"$lt":["$birth year",1960]}]}}).count()
+
+
+#Q2. which movie has a big gap between critic rating and viewer rating among award-winning movies
+db.movies.find({ "$expr": { "$and": [ { "$gt": [ {$subtract: ["$tomatoes.critic.rating", "$tomatoes.viewer.rating"]}, 4 ]}, { "$gte": [ "$awards.wins", 2 ] }]}},{"title":1, "countries":1, "_id":0})
+
+
+
+
+######## Comparison + Logical Operator ########
+
+#Q1.  identify trips neither with duration lower than 1000 nor incurred by riders aging lower than 30
+db.trips.find({"$nor":[{"tripduration":{"$lt":1000}},{"birth year":{"$gt":1990}}]}).count()
+
+
+#Q2. find listings of movies which genres is none of ["Horror", "Thriller", 'Film-Noir', 'Mystery', "Documentary","Crime"] and which is either awards.wins is greater than 100 or imdb.rating is greater than 9
+db.movies.find({"$and" :
+                 [{"genres": {"$nin": [  "Horror", "Thriller", 'Film-Noir', 'Mystery', "Documentary","Crime"]}}, 
+                          { "$or" : [{ "awards.wins": {"$gte": 100} }, {"imdb.rating" : { "$gt":9}} ]}]},{
+  "_id": 0, "title": 1, 'awards.wins': 1, 'imdb.rating': 1
+}).sort({ "awards.wins": -1 }).pretty()
+
+
+
+
+######## Array ########
+
+#Q1.  how many bikes are in use in Brooklyn district (approximately between Manhattan bridge and Brooklyn center)
+
+Brooklyn center: 40.65, -73.95 
+Manhattan bridge: 40.70,-73.99
+
+db.trips.find({"$and":[{"start station location.coordinates.1":{"$gt":40.65}},{"start station location.coordinates.0":{"$lt":-73.95}},{"start station location.coordinates.1":{"$lt":40.70}},{"start station location.coordinates.0":{"$gt":-73.99}}]}).count()
+
+
+#Q2. Find the movies which has critic rating, and whose director is the cast as well
+db.movies.find({ "$expr":{"$and": [{ "$ne": [ "$tomatoes.critic.rating", null]}, {"$eq":["$directors","$cast"]}   ]}})
+
+#Q3. find listinngs which viewer rating is greater than 4
+db.movies.find({"tomatoes.viewer.rating":{"$gt":4}}, { "title": 1, "_id": 0 }).limit(3).pretty()
